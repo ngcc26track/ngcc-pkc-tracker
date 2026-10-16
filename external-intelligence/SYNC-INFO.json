@@ -1,0 +1,11 @@
+{
+  "syncedAt": "2026-10-14T03:29:15.350Z",
+  "source": "/Users/demon/Desktop/NGCC-Research-Library/platform/research-viewer",
+  "files": [
+    "index.html",
+    "intelligence-view.js",
+    "intelligence-data.js",
+    "使用说明.html"
+  ],
+  "localModifications": "2026-10-15：删除 使用说明.html（轻量发送版说明），页面横幅改为「个人研究使用（相关统计和总结仅代表个人观点，外部动态信息以原始来源为准）」免责声明；移除「算法目录未随包附带」「完整规则未随包附带」等未随包附带标注；四类问题分类标签「被攻破」改为「严重」（数据 displayCategory/labels 字段与页面同步改写；来源摘要叙述句中的否定式用法保留原文）。后续从 research-viewer 重新同步时需重新应用以上改动。"
+}
