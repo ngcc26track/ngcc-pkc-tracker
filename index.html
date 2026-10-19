@@ -272,8 +272,13 @@ function normalizeKemParameterName(name, algorithm) {
           ordered.forEach(([algorithm,value],i)=>map.set(algorithm,seen[value]??(seen[value]=i+1)));
           return map;
         };
+        // 尺寸排名取数范围＝尺寸页全量参数（含 NEV 未压缩 C 组补充行，补齐 subroute），与是否有性能记录无关；
+        // 综合名次仍以可比（性能匹配）行为准。
+        const algorithmRouteLookup=Object.fromEntries(DATA.algorithms[cat].map(a=>[a.name,a]));
+        const supplementRowsAgg=(DATA.combinedSizeSupplements||[]).map(r=>({...r,subroute:r.subroute||algorithmRouteLookup[r.algorithm]?.subroute,subrouteLabel:r.subrouteLabel||algorithmRouteLookup[r.algorithm]?.subrouteLabel}));
+        const sizeUniverseAgg=[...DATA.parameters[cat],...supplementRowsAgg].filter(routeFilter);
         const sizeRanks={},refRanks={},optRanks={};
-        targetBands.forEach(b=>{sizeRanks[b]=bestRanks(refRowsAgg,b,'combined');refRanks[b]=bestRanks(refRowsAgg,b,'totalMs');optRanks[b]=bestRanks(optRowsAgg,b,'totalMs')});
+        targetBands.forEach(b=>{sizeRanks[b]=bestRanks(sizeUniverseAgg,b,'combined');refRanks[b]=bestRanks(refRowsAgg,b,'totalMs');optRanks[b]=bestRanks(optRowsAgg,b,'totalMs')});
         const entriesAgg=[...new Set([...refRowsAgg,...optRowsAgg].map(r=>r.algorithm))].map(algorithm=>{
           const sizeValues=targetBands.map(b=>sizeRanks[b].get(algorithm)).filter(v=>v!==undefined);
           const perfValues=targetBands.flatMap(b=>[refRanks[b].get(algorithm),optRanks[b].get(algorithm)].filter(v=>v!==undefined));
@@ -282,7 +287,7 @@ function normalizeKemParameterName(name, algorithm) {
             sizeAvg:mean(sizeValues),
             finalAvg:mean(perfValues),
           };
-        }).sort((a,b)=>a.finalAvg-b.finalAvg||a.algorithm.localeCompare(b.algorithm));
+        }).sort((a,b)=>(a.finalAvg??Infinity)-(b.finalAvg??Infinity)||a.algorithm.localeCompare(b.algorithm));
         const repCache=new Map();
         const repOf=algorithm=>{if(!repCache.has(algorithm))repCache.set(algorithm,[...refRowsAgg,...optRowsAgg].find(x=>x.algorithm===algorithm));return repCache.get(algorithm)};
         const rankCell=(maps,algorithm,band)=>{
@@ -300,7 +305,7 @@ function normalizeKemParameterName(name, algorithm) {
         const tableHeadersAgg='<th>综合<br>排名</th><th>算法</th><th>技术路线</th><th>128 档<br>尺寸排名</th><th>256 档<br>尺寸排名</th><th>512 档<br>尺寸排名</th><th>尺寸平均排名</th><th>128 档综合<br>参考 / 优化</th><th>256 档综合<br>参考 / 优化</th><th>512 档综合<br>参考 / 优化</th><th>尺寸性能综合排名</th>';
         const tableColumnsAgg='<colgroup><col style="width:5%"><col style="width:18%"><col style="width:12%"><col style="width:6%"><col style="width:6%"><col style="width:6%"><col style="width:9%"><col style="width:8%"><col style="width:8%"><col style="width:8%"><col style="width:14%"></colgroup>';
         const excludedAgg=targetBands.flatMap(b=>refDatasetAgg.excluded.filter(r=>r.securityBand===b&&routeFilter(r)).map(r=>({algorithm:r.algorithm,parameterSet:r.parameterSet,band:b,familyLabel:r.familyLabel,subrouteLabel:r.subrouteLabel,reason:r.reason})));
-        return '<article class="card"><div class="section-title"><h2>'+title+' 综合比较</h2><small>x86 · 参考实现 + 优化实现 · 跨档综合评比</small></div><p class="section-summary">综合评比模式（仅 128/256/512 三档，192-bit 与 384-bit 不参与）：各档名次取该算法在该档全部可比参数集中的最优名次——尺寸名次按公钥＋密文字节数升序，综合名次按综合总耗时升序（综合总耗时＝字节换算＋实现耗时，x86 参考实现与优化实现分别排名）。「尺寸平均排名」为三档尺寸名次的等权平均；「尺寸性能综合排名」为各档参考与优化综合名次合并后的等权平均（单一数值；缺项显示「—」且不计入，按可用数量平均，无优化实现的算法只计入参考名次）。表格按尺寸性能综合排名升序。分类及安全等级与尺寸、性能页采用同一参数集口径。</p>'+controls+'<p class="result-note">'+entriesAgg.length+' 个算法参与综合评比；名次为整数（相同数值并列共享名次），平均保留两位小数。技术路线与细分路线筛选同步作用于各档名次。</p><div class="table-wrap"><table class="combined-agg-kem-table">'+tableColumnsAgg+'<thead><tr>'+tableHeadersAgg+'</tr></thead><tbody>'+tableAgg+'</tbody></table></div><details style="margin-top:14px"><summary>暂无综合值的性能记录（'+excludedAgg.length+'，覆盖 128/256/512 档）</summary><ul class="subroute-hint">'+excludedAgg.map(r=>'<li>'+escapeHtml(r.algorithm+' · '+r.parameterSet+'（'+r.band+'；'+r.familyLabel+' / '+r.subrouteLabel+'）：'+r.reason)+'</li>').join('')+'</ul></details></article>';
+        return '<article class="card"><div class="section-title"><h2>'+title+' 综合比较</h2><small>x86 · 参考实现 + 优化实现 · 跨档综合评比</small></div><p class="section-summary">综合评比模式（仅 128/256/512 三档，192-bit 与 384-bit 不参与）：尺寸名次按公钥＋密文字节数升序，取尺寸页全量参数（与是否有性能记录无关，含 NEV 未压缩 C 组补充），算法取该档最优参数、并列数值共享名次；综合名次按综合总耗时升序（综合总耗时＝字节换算＋实现耗时，x86 参考实现与优化实现分别排名），取该档全部可比参数集中的最优名次。「尺寸平均排名」为三档尺寸名次的等权平均；「尺寸性能综合排名」为各档参考与优化综合名次合并后的等权平均（单一数值；缺项显示「—」且不计入，按可用数量平均，无优化实现的算法只计入参考名次）。表格按尺寸性能综合排名升序。分类及安全等级与尺寸、性能页采用同一参数集口径。</p>'+controls+'<p class="result-note">'+entriesAgg.length+' 个算法参与综合评比；名次为整数（相同数值并列共享名次），平均保留两位小数。技术路线与细分路线筛选同步作用于各档名次。</p><div class="table-wrap"><table class="combined-agg-kem-table">'+tableColumnsAgg+'<thead><tr>'+tableHeadersAgg+'</tr></thead><tbody>'+tableAgg+'</tbody></table></div><details style="margin-top:14px"><summary>暂无综合值的性能记录（'+excludedAgg.length+'，覆盖 128/256/512 档）</summary><ul class="subroute-hint">'+excludedAgg.map(r=>'<li>'+escapeHtml(r.algorithm+' · '+r.parameterSet+'（'+r.band+'；'+r.familyLabel+' / '+r.subrouteLabel+'）：'+r.reason)+'</li>').join('')+'</ul></details></article>';
       }
       const targetBands=['256-bit','512-bit','128-bit'];
       const scoped=dataset.rows.filter(r=>(s.combinedFamily==='all'||r.family===s.combinedFamily)&&(!s.combinedSubroutes.length||s.combinedSubroutes.includes(r.subroute)));
