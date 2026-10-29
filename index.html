@@ -269,6 +269,16 @@ function normalizeKemParameterName(name, algorithm) {
       const targetBands=['128-bit','256-bit','512-bit'];
         // 档位加权平均：[权重, 名次] 对，缺项（undefined）不计入，按可用权重归一。
         const weightedMean=pairs=>{let num=0,den=0;pairs.forEach(([w,v])=>{if(v!==undefined){num+=w*v;den+=w}});return den?num/den:null};
+        // 加权表排序（用户指定，2026-10-29）：加权值升序；数学并列（差值<1e-9，消除浮点累加噪声）时按「尺寸加权排名」小者在前，仍并列按算法名。
+        const aggSort=valueKey=>(a,b)=>{
+          const va=a[valueKey]??Infinity,vb=b[valueKey]??Infinity;
+          if(va===Infinity&&vb===Infinity)return a.algorithm.localeCompare(b.algorithm);
+          if(Math.abs(va-vb)>1e-9)return va-vb;
+          const sa=a.sizeAvg??Infinity,sb=b.sizeAvg??Infinity;
+          if(sa===Infinity&&sb===Infinity)return a.algorithm.localeCompare(b.algorithm);
+          if(Math.abs(sa-sb)>1e-9)return sa-sb;
+          return a.algorithm.localeCompare(b.algorithm);
+        };
         const routeFilter=r=>(!s.combinedFamilies.length||s.combinedFamilies.includes(r.family))&&(!s.combinedSubroutes.length||s.combinedSubroutes.includes(r.subroute));
         const refDatasetAgg=combinedPublicKeyRows(cat,aggMetric,'reference');
         const optDatasetAgg=combinedPublicKeyRows(cat,aggMetric,'optimized');
@@ -326,7 +336,7 @@ function normalizeKemParameterName(name, algorithm) {
             const signAvg=weightedMean(targetBands.flatMap(b=>[[overallWeights[b]/2,signRefRanks[b].get(algorithm)],[overallWeights[b]/2,signOptRanks[b].get(algorithm)]]));
             const verifyAvg=weightedMean(targetBands.flatMap(b=>[[overallWeights[b]/2,verifyRefRanks[b].get(algorithm)],[overallWeights[b]/2,verifyOptRanks[b].get(algorithm)]]));
             return {algorithm,sizeAvg,signAvg,verifyAvg,finalScore:sizeAvg!==null&&signAvg!==null&&verifyAvg!==null?sizeAvg*0.7+(signAvg*0.4+verifyAvg*0.6)*0.3:null};
-          }).sort((a,b)=>((a.finalScore??Infinity)-(b.finalScore??Infinity))||a.algorithm.localeCompare(b.algorithm));
+          }).sort(aggSort('finalScore'));
           const tableAgg=entriesAgg.map((e,i)=>{
             const rep=repOf(e.algorithm);
             const algorithmMeta=DATA.algorithms[cat].find(a=>a.name===e.algorithm)||{};
@@ -340,14 +350,14 @@ function normalizeKemParameterName(name, algorithm) {
           const sizeAvgNote='「尺寸加权排名」为三档尺寸名次的档位加权平均（256 档 0.6、128 档 0.2、512 档 0.2；缺项不计入，按可用权重归一）';
           const signAvgNote='「签名时间加权排名」为六个签名单项名次（三档 × 参考/优化）的档位加权平均（参考与优化名次平分所在档权重；缺项不计入，按可用权重归一）';
           const verifyAvgNote='「验签时间加权排名」为六个验签单项名次（三档 × 参考/优化）的档位加权平均（参考与优化名次平分所在档权重；缺项不计入，按可用权重归一）';
-          return '<article class="card"><div class="section-title"><h2>'+title+' 综合比较</h2><small>x86 · 参考实现 + 优化实现 · 跨档加权综合评比</small></div><p class="section-summary">加权综合评比模式（默认视图，仅 128/256/512 三档，384-bit 不参与）：尺寸名次按公钥＋'+payload+'字节数升序，取尺寸页全量参数（与是否有性能记录无关），算法取该档最优参数、并列数值共享名次；签名单项名次与验签单项名次分别按各档 x86 参考实现/优化实现的签名（验签）耗时升序，取该档全部可比参数集的最优名次（参考与优化分别排名，不受上方「综合排序口径」选择影响）。'+sizeAvgNote+'；'+signAvgNote+'；'+verifyAvgNote+'；「尺寸及性能加权排名」＝尺寸加权排名×0.7＋（签名时间加权排名×0.4＋验签时间加权排名×0.6）×0.3（用户指定展示模型；缺任一项则显示「—」并排于末尾），表格按该值从小到大排列。分类及安全等级与尺寸、性能页采用同一参数集口径。</p>'+controls+'<p class="result-note">'+entriesAgg.length+' 个算法参与综合评比；名次为整数（相同数值并列共享名次），平均与加权合计保留两位小数。技术路线与细分路线筛选同步作用于各档名次。</p><div class="table-wrap"><table class="combined-agg2-table agg-rank-cols sig-agg-cols">'+tableColumnsAgg+'<thead><tr>'+tableHeadersAgg+'</tr></thead><tbody>'+tableAgg+'</tbody></table></div><details style="margin-top:14px"><summary>暂无综合值的性能记录（'+excludedAgg.length+'，覆盖 128/256/512 档）</summary><ul class="subroute-hint">'+excludedAgg.map(r=>'<li>'+escapeHtml(r.algorithm+' · '+r.parameterSet+'（'+r.band+'；'+r.familyLabel+' / '+r.subrouteLabel+'）：'+r.reason)+'</li>').join('')+'</ul></details></article>';
+          return '<article class="card"><div class="section-title"><h2>'+title+' 综合比较</h2><small>x86 · 参考实现 + 优化实现 · 跨档加权综合评比</small></div><p class="section-summary">加权综合评比模式（默认视图，仅 128/256/512 三档，384-bit 不参与）：尺寸名次按公钥＋'+payload+'字节数升序，取尺寸页全量参数（与是否有性能记录无关），算法取该档最优参数、并列数值共享名次；签名单项名次与验签单项名次分别按各档 x86 参考实现/优化实现的签名（验签）耗时升序，取该档全部可比参数集的最优名次（参考与优化分别排名，不受上方「综合排序口径」选择影响）。'+sizeAvgNote+'；'+signAvgNote+'；'+verifyAvgNote+'；「尺寸及性能加权排名」＝尺寸加权排名×0.7＋（签名时间加权排名×0.4＋验签时间加权排名×0.6）×0.3（用户指定展示模型；缺任一项则显示「—」并排于末尾），表格按该值从小到大排列（数学并列时按「尺寸加权排名」小者在前、仍并列按算法名）。分类及安全等级与尺寸、性能页采用同一参数集口径。</p>'+controls+'<p class="result-note">'+entriesAgg.length+' 个算法参与综合评比；名次为整数（相同数值并列共享名次），平均与加权合计保留两位小数。技术路线与细分路线筛选同步作用于各档名次。</p><div class="table-wrap"><table class="combined-agg2-table agg-rank-cols sig-agg-cols">'+tableColumnsAgg+'<thead><tr>'+tableHeadersAgg+'</tr></thead><tbody>'+tableAgg+'</tbody></table></div><details style="margin-top:14px"><summary>暂无综合值的性能记录（'+excludedAgg.length+'，覆盖 128/256/512 档）</summary><ul class="subroute-hint">'+excludedAgg.map(r=>'<li>'+escapeHtml(r.algorithm+' · '+r.parameterSet+'（'+r.band+'；'+r.familyLabel+' / '+r.subrouteLabel+'）：'+r.reason)+'</li>').join('')+'</ul></details></article>';
         }
         const entriesAgg=[...new Set([...refRowsAgg,...optRowsAgg].map(r=>r.algorithm))].map(algorithm=>({
           algorithm,
           sizeAvg:weightedMean(targetBands.map(b=>[overallWeights[b],sizeRanks[b].get(algorithm)])),
           perfAvg:weightedMean(targetBands.flatMap(b=>[perfRefRanks[b].get(algorithm),perfOptRanks[b].get(algorithm)].map(v=>[overallWeights[b]/2,v]))),
           overallAvg:weightedMean(targetBands.flatMap(b=>[refRanks[b].get(algorithm),optRanks[b].get(algorithm)].map(v=>[overallWeights[b]/2,v]))),
-        })).sort((a,b)=>((a.overallAvg??Infinity)-(b.overallAvg??Infinity))||a.algorithm.localeCompare(b.algorithm));
+        })).sort(aggSort('overallAvg'));
         const tableAgg=entriesAgg.map((e,i)=>{
           const rep=repOf(e.algorithm);
           const algorithmMeta=DATA.algorithms[cat].find(a=>a.name===e.algorithm)||{};
@@ -360,7 +370,7 @@ function normalizeKemParameterName(name, algorithm) {
         const sizeAvgLabel='尺寸加权排名',perfAvgLabel='性能加权排名';
         const tableHeadersAgg='<th>综合<br>排名</th><th>算法</th><th>技术路线</th><th>128 档<br>尺寸排名</th><th>256 档<br>尺寸排名</th><th>512 档<br>尺寸排名</th><th>'+sizeAvgLabel+'</th><th>128 档性能<br>参考 / 优化</th><th>256 档性能<br>参考 / 优化</th><th>512 档性能<br>参考 / 优化</th><th>'+perfAvgLabel+'</th><th>128 档综合<br>参考 / 优化</th><th>256 档综合<br>参考 / 优化</th><th>512 档综合<br>参考 / 优化</th><th>总体评估排名</th>';
         const tableColumnsAgg='<colgroup><col style="width:4%"><col style="width:15%"><col style="width:8%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:6%"><col style="width:6%"><col style="width:6%"><col style="width:6%"><col style="width:6%"><col style="width:6%"><col style="width:6%"><col style="width:6%"><col style="width:10%"></colgroup>';
-        const overallNote='；「总体评估排名」为六个综合名次（三档 × 参考/优化）的档位加权平均——256 档权重 0.6、128 档 0.2、512 档 0.2（参考与优化名次平分所在档权重；缺项不计入，按可用权重归一，无末位+1 惩罚）。表格按「总体评估排名」升序';
+        const overallNote='；「总体评估排名」为六个综合名次（三档 × 参考/优化）的档位加权平均——256 档权重 0.6、128 档 0.2、512 档 0.2（参考与优化名次平分所在档权重；缺项不计入，按可用权重归一，无末位+1 惩罚）。表格按「总体评估排名」升序，数学并列时按「尺寸加权排名」小者在前、仍并列按算法名';
         const sizeAvgNote='「尺寸加权排名」为三档尺寸名次的档位加权平均（256 档 0.6、128 档 0.2、512 档 0.2；缺项不计入，按可用权重归一）';
         const perfAvgNote='「性能加权排名」为六个性能名次（三档 × 参考/优化）的档位加权平均（参考与优化名次平分所在档权重；缺项不计入，按可用权重归一）';
         return '<article class="card"><div class="section-title"><h2>'+title+' 综合比较</h2><small>x86 · 参考实现 + 优化实现 · 跨档加权综合评比</small></div><p class="section-summary">加权综合评比模式（默认视图，仅 128/256/512 三档，192-bit 与 384-bit 不参与）：尺寸名次按公钥＋'+payload+'字节数升序，取尺寸页全量参数（与是否有性能记录无关，含 NEV 未压缩 C 组补充），算法取该档最优参数、并列数值共享名次；综合名次按综合总耗时升序（综合总耗时＝字节换算＋'+aggOpsLabel+'，x86 参考实现与优化实现分别排名），取该档全部可比参数集的最优名次。'+sizeAvgNote+'；「性能排名」按'+aggOpsLabel+'实现耗时升序（不含字节换算），参考与优化分别排名；'+perfAvgNote+'；'+overallNote+'。分类及安全等级与尺寸、性能页采用同一参数集口径。</p>'+controls+'<p class="result-note">'+entriesAgg.length+' 个算法参与综合评比；名次为整数（相同数值并列共享名次），平均保留两位小数。技术路线与细分路线筛选同步作用于各档名次。</p><div class="table-wrap"><table class="combined-agg2-table agg-rank-cols">'+tableColumnsAgg+'<thead><tr>'+tableHeadersAgg+'</tr></thead><tbody>'+tableAgg+'</tbody></table></div><details style="margin-top:14px"><summary>暂无综合值的性能记录（'+excludedAgg.length+'，覆盖 128/256/512 档）</summary><ul class="subroute-hint">'+excludedAgg.map(r=>'<li>'+escapeHtml(r.algorithm+' · '+r.parameterSet+'（'+r.band+'；'+r.familyLabel+' / '+r.subrouteLabel+'）：'+r.reason)+'</li>').join('')+'</ul></details></article>';
