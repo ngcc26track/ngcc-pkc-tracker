@@ -24,6 +24,17 @@
   </style>
 </head>
 <body>
+  <style id="gate-style">
+  #access-gate{position:fixed;inset:0;z-index:2147483647;background:#f4f7f7;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",Arial,sans-serif}
+  #access-gate .gate-box{background:#fff;border:1px solid #d8e3e1;border-radius:14px;padding:26px 28px;box-shadow:0 10px 34px rgba(16,43,47,.14);text-align:center;width:300px;box-sizing:border-box}
+  #access-gate h3{margin:0 0 6px;font-size:17px;color:#123c40}
+  #access-gate p{margin:0 0 14px;font-size:12px;color:#6d8386}
+  #access-gate input{width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #d8e3e1;border-radius:9px;font:15px/1.4 inherit;letter-spacing:3px;text-align:center;outline:none;color:#123c40}
+  #access-gate input:focus{border-color:#16a67b}
+  #access-gate button{margin-top:12px;width:100%;padding:10px;border:0;border-radius:9px;background:#16a67b;color:#fff;font-size:14px;font-weight:700;cursor:pointer}
+  #access-gate .gate-err{margin-top:9px;font-size:12px;color:#c62828;min-height:14px}
+  </style>
+  <div id="access-gate"><div class="gate-box"><h3>访问验证</h3><p>本页面为个人研究使用，请输入访问密码</p><input id="gate-input" type="password" autocomplete="off"><button id="gate-btn">进入</button><div class="gate-err" id="gate-err"></div></div></div>
   <header class="header"><div class="headrow"><div class="brand"><span class="mark">N</span><div><strong>NICCS · R1</strong><small>候选算法统计台 · 个人研究使用（相关统计和总结仅代表个人观点）</small></div></div><span class="snapshot">84 项公钥</span></div><nav class="nav" aria-label="主要导航"><button data-view="overview">公钥概览及总结</button><button data-view="kem">KEM 对比</button><button data-view="signatures">签名对比</button><button data-view="kex">KEX 对比</button><button data-view="intelligence">外部动态</button></nav></header>
   <main class="main"><section id="overview" class="view"></section><section id="kem" class="view"></section><section id="signatures" class="view"></section><section id="kex" class="view"></section><section id="intelligence" class="view"><iframe class="external-frame" title="外部动态跟踪总结" src="external-intelligence/index.html" loading="lazy"></iframe></section></main>
   <footer class="footer">数据来源：新库正式公钥元数据、0928 公钥机构及 Yaofu 性能展示输入；版本和证据映射见 <a href="https://github.com/ngcc26track/ngcc-pkc-tracker">项目说明</a>。本文件可直接双击打开，无需网络或本地服务器。</footer>
@@ -505,6 +516,26 @@ function normalizeKemParameterName(name, algorithm) {
   }
   window.addEventListener('message',event=>{if(event.source===window.parent&&event.data?.type==='ngcc-view-select')showView(event.data.view)});
   renderOverview();renderCompare('kem');renderCompare('signatures');renderCompare('kex');document.querySelectorAll('.nav button').forEach(b=>b.onclick=()=>showView(b.dataset.view));window.addEventListener('hashchange',()=>showView(location.hash.slice(1)));showView(location.hash.slice(1)||'overview');
+  </script>
+  <script>
+  // 访问密码门（客户端弱防护，按用户要求 2026-10-30 加入）：密码经 djb2 哈希后嵌入（改密码请同时更新此常量与 update-intelligence.mjs 的注入片段）；
+  // 解锁状态存 localStorage（键 niccs-access-ok），与外部动态页同源共享，输一次即全站解锁。源文件本身仍可被直接下载，非安全边界。
+  (function(){
+    var GATE_HASH='7bfd6100';
+    var KEY='niccs-access-ok';
+    function hash(s){var h=5381;for(var i=0;i<s.length;i++)h=(h*33+s.charCodeAt(i))>>>0;return h.toString(16)}
+    var gate=document.getElementById('access-gate');
+    function close(){if(gate&&gate.parentNode)gate.parentNode.removeChild(gate);var st=document.getElementById('gate-style');if(st&&st.parentNode)st.parentNode.removeChild(st)}
+    var stored=null;try{stored=localStorage.getItem(KEY)}catch(e){}
+    if(stored===GATE_HASH){close();return}
+    function tryUnlock(){
+      var v=document.getElementById('gate-input').value;
+      if(hash(v)===GATE_HASH){try{localStorage.setItem(KEY,GATE_HASH)}catch(e){}close()}
+      else{document.getElementById('gate-err').textContent='密码不正确，请重试';var inp=document.getElementById('gate-input');inp.value='';inp.focus()}
+    }
+    if(document.getElementById('gate-btn'))document.getElementById('gate-btn').onclick=tryUnlock;
+    if(document.getElementById('gate-input'))document.getElementById('gate-input').addEventListener('keydown',function(e){if(e.key==='Enter')tryUnlock()});
+  })();
   </script>
 </body>
 </html>
